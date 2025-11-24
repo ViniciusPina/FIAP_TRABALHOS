@@ -1,0 +1,100 @@
+-- SCRIPT FINAL: CATÁLOGO EXPANDIDO PARA MATCHES PREVISÍVEIS
+SET DEFINE OFF;
+
+-- 1. LIMPEZA
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE RECOMENDACAO CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE INSCRICAO CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE CURSO CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE USUARIO CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_USUARIO'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_CURSO'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_INSCRICAO'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_RECOMENDACAO'; EXCEPTION WHEN OTHERS THEN NULL; END;
+/
+
+-- 2. CRIAÇÃO
+CREATE TABLE USUARIO (
+    ID_USUARIO NUMBER(10) PRIMARY KEY,
+    NOME VARCHAR2(150) NOT NULL,
+    IDADE NUMBER(3),
+    AREA_INTERESSE VARCHAR2(100),
+    NIVEL_FORMACAO VARCHAR2(80),
+    HABILIDADES CLOB,
+    OBJETIVO_PROFISSIONAL CLOB
+);
+
+CREATE TABLE CURSO (
+    ID_CURSO NUMBER(10) PRIMARY KEY,
+    NOME VARCHAR2(150) NOT NULL,
+    CATEGORIA VARCHAR2(80) NOT NULL,
+    NIVEL VARCHAR2(40) NOT NULL,
+    CARGA_HORARIA NUMBER(5),
+    LINK VARCHAR2(255)
+);
+
+CREATE TABLE INSCRICAO (
+    ID_INSCRICAO NUMBER(10) PRIMARY KEY,
+    ID_USUARIO NUMBER(10) NOT NULL,
+    ID_CURSO NUMBER(10) NOT NULL,
+    PROGRESSO NUMBER(3),
+    AVALIACAO NUMBER(2),
+    CONSTRAINT FK_INSCR_USER FOREIGN KEY (ID_USUARIO) REFERENCES USUARIO(ID_USUARIO),
+    CONSTRAINT FK_INSCR_CURSO FOREIGN KEY (ID_CURSO) REFERENCES CURSO(ID_CURSO)
+);
+
+CREATE TABLE RECOMENDACAO (
+    ID_RECOMENDACAO NUMBER(10) PRIMARY KEY,
+    ID_USUARIO NUMBER(10) NOT NULL,
+    ID_CURSO NUMBER(10) NOT NULL,
+    SCORE NUMBER(5,2),
+    TIPO_RECOMENDACAO VARCHAR2(40),
+    CONSTRAINT FK_REC_USER FOREIGN KEY (ID_USUARIO) REFERENCES USUARIO(ID_USUARIO),
+    CONSTRAINT FK_REC_CURSO FOREIGN KEY (ID_CURSO) REFERENCES CURSO(ID_CURSO)
+);
+
+-- 3. SEQUENCES
+CREATE SEQUENCE SEQ_USUARIO START WITH 1 INCREMENT BY 1 NOCACHE;
+CREATE SEQUENCE SEQ_CURSO START WITH 1 INCREMENT BY 1 NOCACHE;
+CREATE SEQUENCE SEQ_INSCRICAO START WITH 1 INCREMENT BY 1 NOCACHE;
+CREATE SEQUENCE SEQ_RECOMENDACAO START WITH 1 INCREMENT BY 1 NOCACHE;
+
+-- 4. CARGA DE DADOS (ESTRATÉGIA DE PALAVRAS-CHAVE)
+
+-- === DEVOPS & CLOUD (Palavras: AWS, Cloud, Docker, Kubernetes, Linux, Azure) ===
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'AWS Cloud Practitioner Essentials', 'DevOps & SRE', 'Básico', 15, 'https://aws.amazon.com/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Docker e Kubernetes: Do Zero ao Maestro', 'DevOps & SRE', 'Intermediário', 40, 'https://kubernetes.io/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Linux Admin: Comandos e Shell Script', 'DevOps & SRE', 'Básico', 25, 'https://www.linux.org/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'DevOps CI/CD com Jenkins e Git', 'DevOps & SRE', 'Avançado', 35, 'https://www.jenkins.io/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Microsoft Azure Fundamentals', 'DevOps & SRE', 'Básico', 12, 'https://azure.microsoft.com/');
+
+-- === DADOS (Palavras: Python, SQL, Power BI, Excel, Data Science) ===
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Python para Data Science', 'Dados & Analytics', 'Intermediário', 45, 'https://www.python.org/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'SQL Completo para Banco de Dados Oracle', 'Dados & Analytics', 'Básico', 30, 'https://www.oracle.com/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Power BI e Dashboard Design', 'Dados & Analytics', 'Intermediário', 20, 'https://powerbi.microsoft.com/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Excel Avançado para Negócios', 'Dados & Analytics', 'Avançado', 15, 'https://www.microsoft.com/excel');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Engenharia de Dados e Big Data', 'Dados & Analytics', 'Avançado', 60, 'https://spark.apache.org/');
+
+-- === DESENVOLVIMENTO (Palavras: Java, Javascript, React, Full Stack, Spring) ===
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Java Spring Boot Completo', 'Engenharia de Software', 'Avançado', 80, 'https://spring.io/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Desenvolvimento Web Full Stack (JS/Node)', 'Engenharia de Software', 'Intermediário', 100, 'https://nodejs.org/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'React JS: Criando Interfaces Modernas', 'Engenharia de Software', 'Intermediário', 40, 'https://react.dev/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Lógica de Programação com JavaScript', 'Engenharia de Software', 'Básico', 20, 'https://developer.mozilla.org/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Angular Framework Masterclass', 'Engenharia de Software', 'Avançado', 50, 'https://angular.io/');
+
+-- === UX & PRODUTO (Palavras: UX, UI, Figma, Product Owner, Scrum) ===
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'UX/UI Design com Figma', 'UX / Produto', 'Básico', 30, 'https://www.figma.com/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Gestão de Produtos Digitais', 'UX / Produto', 'Intermediário', 25, 'https://www.scrum.org/');
+INSERT INTO CURSO VALUES (SEQ_CURSO.NEXTVAL, 'Scrum Master Certification', 'Negócios & Gestão', 'Intermediário', 20, 'https://www.scrumalliance.org/');
+
+-- 5. DADOS DE TESTE
+INSERT INTO USUARIO VALUES (SEQ_USUARIO.NEXTVAL, 'Tester DevOps', 25, 'DevOps & SRE', 'Básico', 'Linux, Docker', 'Especialista Cloud');
+COMMIT;
+
+SELECT 'Banco Atualizado com ' || COUNT(*) || ' cursos.' as STATUS FROM CURSO;

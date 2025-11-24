@@ -1,0 +1,17 @@
+br\com\asteria\reskill\entity\Usuario.class
+br\com\asteria\reskill\service\UsuarioService.class
+br\com\asteria\reskill\controller\RecomendacaoController.class
+br\com\asteria\reskill\dao\CursoDAO.class
+br\com\asteria\reskill\dao\InscricaoDAO.class
+br\com\asteria\reskill\service\RecomendacaoService.class
+br\com\asteria\reskill\service\CursoService.class
+br\com\asteria\reskill\service\InscricaoService.class
+br\com\asteria\reskill\entity\Recomendacao.class
+br\com\asteria\reskill\controller\InscricaoController.class
+br\com\asteria\reskill\controller\CursoController.class
+br\com\asteria\reskill\controller\UsuarioController.class
+br\com\asteria\reskill\entity\Inscricao.class
+br\com\asteria\reskill\entity\Curso.class
+br\com\asteria\reskill\factory\ConnectionFactory.class
+br\com\asteria\reskill\dao\RecomendacaoDAO.class
+br\com\asteria\reskill\dao\UsuarioDAO.class

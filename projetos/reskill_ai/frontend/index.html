@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>RE:Skill AI – Plataforma de Requalificação</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="layout">
+
+  <header>
+      <div class="header-inner">
+          <div class="brand">
+              <div class="brand-logo">R</div>
+              <div>
+                  <div class="brand-text-title">RE:Skill AI</div>
+                  <div class="brand-text-sub">Requalificação orientada por dados</div>
+                </div>
+          </div>
+          <nav>
+              <span style="font-size: 13px; color: #9ca3af; cursor: pointer;">Visão geral</span>
+              
+              <a href="front_end/adminhub/index.html" class="btn-accent">
+                📊 Dashboard Admin
+              </a>
+
+              <div class="pill-status">
+                  <div class="pill-dot"></div>
+                  MVP conectado
+                </div>
+          </nav>
+      </div>
+  </header>
+
+  <main>
+      <section class="shell">
+            <div class="panel-primary">
+              <div class="panel-header">
+                  <div>
+                      <div class="tag">
+                        <div class="tag-dot"></div>
+                        Futuro do Trabalho · Plataforma de Requalificação
+                      </div>
+                      <h1 class="h1">
+                          Conecte <span>pessoas</span> a novas carreiras com dados e IA.
+                      </h1>
+                      <p class="subtitle">
+                          Este front-end captura o perfil do usuário, envia ao backend Java (API Oracle) e, futuramente, consome recomendações calculadas em R (Machine Learning) para sugerir trilhas de carreira e cursos de requalificação.
+                      </p>
+                      <div class="chips">
+                          <div class="chip"><div class="chip-dot"></div>Perfil & empregabilidade</div>
+                          <div class="chip"><div class="chip-dot"></div>Oracle + Java (POO, JDBC, DAO)</div>
+                          <div class="chip"><div class="chip-dot"></div>ML em R - recomendações</div>
+                      </div>
+                  </div>
+                  <div class="panel-right-shape">
+                      <div class="badge-ml">
+                        <div class="badge-ml-title">Engine de IA (R)</div>
+                        <div>Modelo de recomendação calcula score de aderência entre perfil e trilhas de curso.</div>
+                      </div>
+                      <div class="orb"></div>
+                  </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="section-title">1. Cadastro de Perfil do Usuário</div>
+              <p class="status-hint">
+                Os campos abaixo mapeiam diretamente a tabela <strong>USUARIO</strong> no Oracle: nome, idade, área_interesse, nivel_formacao, habilidades, objetivo_profissional.
+              </p>
+              
+              <form id="perfil-form">
+                  <div class="form-grid">
+                      <div class="field">
+                        <label for="nome">Nome completo</label>
+                        <input id="nome" name="nome" type="text" placeholder="Ex.: Ana Paula dos Santos" required />
+                      </div>
+                      <div class="field">
+                        <label for="idade">Idade</label>
+                        <input id="idade" name="idade" type="number" min="16" max="80" placeholder="Ex.: 32" required />
+                      </div>
+                      <div class="field">
+                        <label for="area_interesse">Área de interesse principal</label>
+                        <select id="area_interesse" name="area_interesse" required>
+                            <option value="">Selecione...</option>
+                            <option>Dados & Analytics</option>
+                            <option>Engenharia de Software</option>
+                            <option>DevOps & SRE</option>
+                            <option>UX / Produto</option>
+                            <option>Negócios & Gestão</option>
+                            <option>Transição de carreira para TI</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <label for="nivel_formacao">Nível de formação</label>
+                        <select id="nivel_formacao" name="nivel_formacao" required>
+                            <option value="">Selecione...</option>
+                            <option>Ensino médio</option>
+                            <option>Técnico</option>
+                            <option>Graduação em andamento</option>
+                            <option>Graduação completa</option>
+                            <option>Pós-graduação / MBA</option>
+                        </select>
+                      </div>
+                      <div class="field full-width">
+                        <label for="habilidades">Habilidades atuais (palavras-chave)</label>
+                        <textarea id="habilidades" name="habilidades" placeholder="Ex.: SQL, Excel avançado, atendimento ao cliente, operações de loja..." required></textarea>
+                        <span class="field-small">
+                            Esse campo será usado pelo modelo em R para clusterizar perfis e sugerir trilhas de upskilling/reskilling.
+                        </span>
+                      </div>
+                      <div class="field full-width">
+                        <label for="objetivo_profissional">Objetivo profissional</label>
+                        <textarea id="objetivo_profissional" name="objetivo_profissional" placeholder="Ex.: Migrar de operações de varejo para área de dados, buscando atuar como analista de BI em até 12 meses." required></textarea>
+                      </div>
+                  </div>
+
+                  <div class="actions">
+                      <div>
+                        <button type="submit" class="btn-primary">
+                            <span class="icon">⚡</span>
+                            Registrar perfil & gerar recomendações
+                        </button>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                        <button type="button" class="btn-secondary" id="reset-form">
+                            Limpar formulário
+                        </button>
+                         <a href="front_end/adminhub/index.html" class="btn-accent">
+                            Ir para Dashboard Admin
+                        </a>
+                        <span class="status-hint" id="status-label">Status: aguardando envio do perfil.</span>
+                      </div>
+                  </div>
+              </form>
+          </div>
+
+            <aside class="panel-side">
+              <div class="panel-side-header">
+                  <div>
+                      <div class="section-title">2. Recomendações de cursos & trilhas</div>
+                      <p class="metric">
+                          Estas recomendações são geradas pela Engine R e carregadas da API Java.
+                      </p>
+                  </div>
+                  <div class="pill-small">
+                      Simulação · Career Recommender
+                  </div>
+              </div>
+
+              <div class="recs-list" id="recs-list">
+                  </div>
+            </aside>
+        </section>
+    </main>
+
+    <footer>
+        MVP front-end – RE:Skill AI · Orquestrado para integração futura com backend Java (Oracle) e engine de ML em R.
+    </footer>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
