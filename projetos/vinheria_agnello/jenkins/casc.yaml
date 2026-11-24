@@ -1,0 +1,59 @@
+# Jenkins Configuration as Code: o servidor inteiro (usuario, seguranca e o
+# job do pipeline) e criado a partir deste arquivo - nada e clicado na UI.
+jenkins:
+  systemMessage: "Vinheria Agnello - CI/CD (FIAP Sprint 7). Configurado via JCasC."
+  numExecutors: 2
+  mode: NORMAL
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_USUARIO:-admin}"
+          name: "Administrador"
+          password: "${JENKINS_ADMIN_SENHA}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+  remotingSecurity:
+    enabled: true
+
+security:
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: false
+
+unclassified:
+  location:
+    url: "http://localhost:${JENKINS_PORTA:-8090}/"
+  timestamper:
+    allPipelines: true
+
+jobs:
+  - script: |
+      pipelineJob('vinheria-agnello') {
+        displayName('Vinheria Agnello - CI/CD')
+        description('Build, testes, DevSecOps, empacotamento, publicacao (IIS simulado) e deploy dos microsservicos catalogo-service e carrinho-service.')
+        logRotator { numToKeep(20) }
+        properties {
+          disableConcurrentBuilds()
+          pipelineTriggers {
+            triggers {
+              pollSCM { scmpoll_spec('H/2 * * * *') }
+            }
+          }
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('${REPO_URL}') }
+                branch('${REPO_BRANCH}')
+              }
+            }
+            scriptPath('projetos/vinheria_agnello/Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }
