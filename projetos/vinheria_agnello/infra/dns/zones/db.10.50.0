@@ -1,0 +1,12 @@
+; =============================================================================
+; Zona reversa 10.50.0.0/24  (IP -> nome)
+; PTR dos microsservicos sao criados dinamicamente pelo DHCP (Kea D2).
+; =============================================================================
+$TTL 300
+@       IN  SOA ns1.vinheria.local. hostmaster.vinheria.local. (
+                2026112301 3600 900 604800 300 )
+        IN  NS  ns1.vinheria.local.
+
+2       IN  PTR ns1.vinheria.local.
+3       IN  PTR dhcp.vinheria.local.
+10      IN  PTR gateway.vinheria.local.

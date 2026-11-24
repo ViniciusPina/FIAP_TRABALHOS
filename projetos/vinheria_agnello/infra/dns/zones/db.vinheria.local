@@ -1,0 +1,32 @@
+; =============================================================================
+; Zona direta vinheria.local
+; - Infraestrutura (DNS, DHCP, gateway) possui IP fixo -> registros estaticos.
+; - Microsservicos recebem IP por DHCP (reserva) e sao registrados
+;   AUTOMATICAMENTE pelo Kea D2 (A + PTR + DHCID). Nao cadastre-os aqui.
+; - Registros SRV (RFC 2782) publicam "onde" cada servico atende:
+;   o carrinho-service descobre o catalogo-service consultando
+;   _catalogo._tcp.vinheria.local (service discovery via DNS).
+; =============================================================================
+$TTL 300
+@           IN  SOA ns1.vinheria.local. hostmaster.vinheria.local. (
+                    2026112301  ; serial (AAAAMMDDnn)
+                    3600        ; refresh
+                    900         ; retry
+                    604800      ; expire
+                    300 )       ; negative cache TTL
+            IN  NS  ns1.vinheria.local.
+
+; ---- Infraestrutura (IP fixo) ----------------------------------------------
+ns1         IN  A       10.50.0.2
+dhcp        IN  A       10.50.0.3
+gateway     IN  A       10.50.0.10
+api         IN  CNAME   gateway.vinheria.local.
+inseguro    IN  A       10.50.0.11      ; gateway HTTP da demo da Parte 3 (perfil demo-inseguro)
+
+; ---- Descoberta de servicos (SRV: prioridade peso porta alvo) ---------------
+_catalogo._tcp  IN  SRV 0 100 8443 catalogo.vinheria.local.
+_carrinho._tcp  IN  SRV 0 100 8443 carrinho.vinheria.local.
+
+; ---- Metadados (TXT) ---------------------------------------------------------
+_catalogo._tcp  IN  TXT "path=/produtos" "proto=https" "auth=mtls+jwt"
+_carrinho._tcp  IN  TXT "path=/carrinhos" "proto=https" "auth=mtls+basic"

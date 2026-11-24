@@ -1,0 +1,47 @@
+# Gateway de PRODUCAO: HTTP apenas redireciona; todo trafego e HTTPS.
+# Template processado pelo entrypoint oficial do Nginx (envsubst): apenas
+# variaveis de ambiente DEFINIDAS sao trocadas; $host etc. ficam intactas.
+
+# Quem esta dentro da LAN fala com a porta 443 do gateway; quem vem do host
+# usa a porta publicada (${HTTPS_PORTA_PUBLICA}).
+geo $porta_https {
+    default       ${HTTPS_PORTA_PUBLICA};
+    10.50.0.0/24  443;
+}
+
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location = /health {                    # usado pelo healthcheck do container
+        access_log off;
+        return 200 '{"status":"ok","servico":"gateway"}';
+    }
+    location / {
+        return 301 https://$host:$porta_https$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name api.vinheria.local gateway.vinheria.local localhost;
+
+    ssl_certificate     /run/pki/tls.crt;
+    ssl_certificate_key /run/pki/tls.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;    # TLS 1.0/1.1 desabilitados
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:TLS:10m;
+    ssl_session_timeout 1h;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options    "nosniff" always;
+    add_header X-Frame-Options           "DENY" always;
+    add_header Referrer-Policy           "no-referrer" always;
+    add_header Content-Security-Policy   "default-src 'none'; frame-ancestors 'none'" always;
+    add_header X-Request-ID              $request_id always;
+
+    include /etc/nginx/comum.conf;
+}

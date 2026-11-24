@@ -1,0 +1,13 @@
+# !!! SOMENTE PARA A DEMONSTRACAO DA PARTE 3 (perfil "demo-inseguro") !!!
+# Mesmas rotas do gateway seguro, porem o cliente fala HTTP puro: qualquer um
+# na rede le senhas, tokens e dados em texto claro (veja scripts/demo-wireshark.sh).
+
+server {
+    listen 80 default_server;
+    server_name inseguro.vinheria.local localhost _;
+
+    add_header X-Aviso "trafego SEM criptografia - apenas demonstracao" always;
+    add_header X-Request-ID $request_id always;
+
+    include /etc/nginx/comum.conf;
+}
