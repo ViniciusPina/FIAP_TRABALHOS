@@ -1,0 +1,6 @@
+# Scripts e configs rodam dentro de containers Linux: SEMPRE LF.
+# (Sem isto, um clone no Windows com autocrlf quebra os .sh com "\r: not found")
+* text=auto eol=lf
+*.pcap binary
+*.png binary
+*.svg text eol=lf

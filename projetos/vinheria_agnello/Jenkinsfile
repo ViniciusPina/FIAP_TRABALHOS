@@ -1,0 +1,148 @@
+// =============================================================================
+// Vinheria Agnello - Pipeline de CI/CD (Jenkins declarativo)
+//
+// Checkout -> Build -> Qualidade (testes + lint, em paralelo) -> DevSecOps
+//          -> Empacotar -> Publicar na pasta (IIS simulado) -> Deploy dos
+//          containers -> Smoke test.   Falhou depois do deploy? rollback.
+//
+// O job e criado automaticamente pelo Jenkins-as-Code (jenkins/casc.yaml).
+// =============================================================================
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '5'))
+        timeout(time: 40, unit: 'MINUTES')
+    }
+
+    parameters {
+        booleanParam(name: 'SUBIR_AMBIENTE', defaultValue: true,
+                     description: 'Fazer o deploy dos containers (docker compose up) e rodar o smoke test')
+        booleanParam(name: 'ROLLBACK', defaultValue: false,
+                     description: 'Somente reverter a pasta de publicacao para a versao anterior')
+    }
+
+    environment {
+        PROJETO              = 'projetos/vinheria_agnello'
+        APP_VERSION          = "1.0.${env.BUILD_NUMBER}"
+        PUBLICACAO_DIR       = '/var/publicacao'
+        COMPOSE_PROJECT_NAME = 'vinheria'
+        DOCKER_BUILDKIT      = '1'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.COMMIT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} v${env.APP_VERSION} (${env.COMMIT})"
+                }
+            }
+        }
+
+        stage('Rollback manual') {
+            when { expression { params.ROLLBACK } }
+            steps {
+                dir(env.PROJETO) { sh 'bash scripts/publicar.sh --rollback "$PUBLICACAO_DIR"' }
+            }
+        }
+
+        stage('Build') {
+            when { expression { !params.ROLLBACK } }
+            steps {
+                dir(env.PROJETO) {
+                    sh 'echo "Deploy da Vinheria - build $APP_VERSION (commit $COMMIT)"'
+                    sh '[ -f .env ] || cp .env.example .env'
+                    sh 'docker compose config --quiet'
+                    sh 'docker compose build --pull'
+                }
+            }
+        }
+
+        stage('Qualidade') {
+            when { expression { !params.ROLLBACK } }
+            parallel {
+                stage('Testes catalogo-service') {
+                    steps {
+                        dir(env.PROJETO) {
+                            sh 'docker build --target relatorios --output type=local,dest=relatorios/catalogo services/catalogo-service'
+                        }
+                    }
+                }
+                stage('Testes carrinho-service') {
+                    steps {
+                        dir(env.PROJETO) {
+                            sh 'docker build --target relatorios --output type=local,dest=relatorios/carrinho services/carrinho-service'
+                        }
+                    }
+                }
+                stage('Lint de infraestrutura') {
+                    steps {
+                        dir(env.PROJETO) { sh 'bash scripts/validar-configs.sh' }
+                    }
+                }
+            }
+        }
+
+        stage('DevSecOps') {
+            when { expression { !params.ROLLBACK } }
+            steps {
+                dir(env.PROJETO) { sh 'bash scripts/scan-seguranca.sh' }
+            }
+        }
+
+        stage('Empacotar') {
+            when { expression { !params.ROLLBACK } }
+            steps {
+                dir(env.PROJETO) {
+                    sh 'bash scripts/empacotar.sh "$APP_VERSION" "$COMMIT"'
+                    archiveArtifacts artifacts: 'dist/*.tar.gz*', fingerprint: true
+                }
+            }
+        }
+
+        stage('Publicar (IIS simulado)') {
+            when { expression { !params.ROLLBACK } }
+            steps {
+                dir(env.PROJETO) {
+                    sh 'bash scripts/publicar.sh "dist/vinheria-agnello-$APP_VERSION.tar.gz" "$PUBLICACAO_DIR"'
+                    sh 'echo "--- conteudo publicado:"; ls -la "$PUBLICACAO_DIR/wwwroot"; tail -3 "$PUBLICACAO_DIR/deploy.log"'
+                }
+            }
+        }
+
+        stage('Deploy dos containers') {
+            when { expression { params.SUBIR_AMBIENTE && !params.ROLLBACK } }
+            steps {
+                dir(env.PROJETO) {
+                    sh 'docker compose up -d --remove-orphans'
+                    sh 'bash scripts/aguardar-saude.sh 240'
+                }
+            }
+        }
+
+        stage('Smoke test') {
+            when { expression { params.SUBIR_AMBIENTE && !params.ROLLBACK } }
+            steps {
+                dir(env.PROJETO) { sh 'bash scripts/smoke-test.sh' }
+            }
+        }
+    }
+
+    post {
+        always {
+            junit allowEmptyResults: true, testResults: "${env.PROJETO}/relatorios/**/*.xml"
+            archiveArtifacts allowEmptyArchive: true, artifacts: "${env.PROJETO}/relatorios/**"
+        }
+        failure {
+            echo 'Falha no pipeline: revertendo a pasta de publicacao para a versao anterior'
+            dir(env.PROJETO) { sh 'bash scripts/publicar.sh --rollback "$PUBLICACAO_DIR" || true' }
+        }
+        success {
+            echo "Vinheria Agnello v${env.APP_VERSION} publicada com sucesso"
+        }
+    }
+}

@@ -1,0 +1,21 @@
+# Segredos e configuracao local
+.env
+jenkins/.env
+
+# Artefatos gerados pelos scripts/pipelines
+relatorios/
+evidencias/
+capturas/
+dist/
+publicacao/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Editores
+.idea/
+.vscode/

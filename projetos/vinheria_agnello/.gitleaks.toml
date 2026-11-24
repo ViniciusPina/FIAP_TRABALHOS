@@ -1,0 +1,14 @@
+# Regras padrao do gitleaks + excecoes do laboratorio.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Artefatos locais gerados (nunca versionados) e credenciais de LABORATORIO documentadas"
+paths = [
+  '''(^|/)\.env$''',
+  '''(^|/)relatorios/''',
+  '''(^|/)evidencias/''',
+  '''(^|/)capturas/''',
+  '''(^|/)dist/''',
+  '''(^|/)publicacao/''',
+]

@@ -1,0 +1,344 @@
+# =============================================================================
+# Vinheria Agnello - Sprint 7 - Ambiente simulado de infraestrutura
+#
+#   docker compose up -d --build          sobe tudo
+#   bash scripts/smoke-test.sh            valida DHCP, DNS e comunicacao
+#   docker compose down -v                derruba e apaga volumes
+#
+# Rede "lan" (10.50.0.0/24, interna, sem saida para a internet):
+#   10.50.0.2   dns         BIND 9 (vinheria.local)          IP fixo
+#   10.50.0.3   dhcp        Kea DHCPv4 + D2 (DNS dinamico)   IP fixo
+#   10.50.0.10  gateway     Nginx TLS (unica porta exposta)  IP fixo
+#   10.50.0.101 catalogo    catalogo-service                 reserva DHCP
+#   10.50.0.102 carrinho    carrinho-service                 reserva DHCP
+#   10.50.0.150+ estacao-pdv                                  pool DHCP
+# =============================================================================
+name: vinheria
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+# Endurecimento padrao aplicado a todos os containers
+x-hardening: &hardening
+  restart: unless-stopped
+  logging: *logging
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+
+x-pki: &pki-volume
+  type: volume
+  source: pki
+  read_only: true
+
+services:
+  # ---------------------------------------------------------------------------
+  # Bootstrap: CA interna, certificados, chaves JWT e segredo TSIG (roda 1x)
+  # ---------------------------------------------------------------------------
+  pki-init:
+    build: ./infra/pki
+    image: vinheria/pki-init:${APP_VERSION:-dev}
+    restart: "no"
+    logging: *logging
+    network_mode: none
+    secrets: [operador_senha]
+    volumes:
+      - pki:/pki
+
+  # ---------------------------------------------------------------------------
+  # DNS autoritativo (BIND 9)
+  # ---------------------------------------------------------------------------
+  dns:
+    <<: *hardening
+    build: ./infra/dns
+    image: vinheria/dns:${APP_VERSION:-dev}
+    hostname: ns1
+    cap_add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE, DAC_OVERRIDE]
+    read_only: true
+    tmpfs: ["/run/named", "/tmp"]
+    depends_on:
+      pki-init: { condition: service_completed_successfully }
+    volumes:
+      # Zonas persistentes: reiniciar o DNS NAO apaga os registros criados pelo DHCP
+      - dns-zonas:/var/bind
+      - <<: *pki-volume
+        target: /run/pki
+        volume: { subpath: ddns }
+    networks:
+      lan: { ipv4_address: 10.50.0.2 }
+
+  # ---------------------------------------------------------------------------
+  # DHCP (Kea DHCPv4) + atualizador de DNS (Kea D2) no mesmo namespace de rede
+  # ---------------------------------------------------------------------------
+  dhcp:
+    <<: *hardening
+    build: ./infra/dhcp
+    image: vinheria/dhcp:${APP_VERSION:-dev}
+    hostname: dhcp
+    command: ["dhcp4"]
+    cap_add: [NET_RAW, NET_BIND_SERVICE]
+    read_only: true
+    tmpfs: ["/run/kea", "/tmp"]
+    depends_on:
+      dns: { condition: service_healthy }
+    volumes:
+      - dhcp-leases:/var/lib/kea
+    networks:
+      lan: { ipv4_address: 10.50.0.3 }
+    healthcheck:
+      test: ["CMD-SHELL", "printf '{\"command\":\"status-get\"}' | socat -t 2 - UNIX-CONNECT:/run/kea/kea4-ctrl-socket | grep -q '\"result\": 0'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  dhcp-ddns:
+    <<: *hardening
+    image: vinheria/dhcp:${APP_VERSION:-dev}
+    command: ["ddns"]
+    read_only: true
+    tmpfs: ["/run/kea", "/tmp"]
+    network_mode: "service:dhcp"
+    depends_on:
+      dhcp: { condition: service_healthy }
+    volumes:
+      - <<: *pki-volume
+        target: /run/pki
+        volume: { subpath: ddns }
+
+  # ---------------------------------------------------------------------------
+  # Microsservico 1: catalogo-service (vinhos e estoque)
+  # ---------------------------------------------------------------------------
+  catalogo:
+    <<: *hardening
+    build:
+      context: ./services/catalogo-service
+      target: runtime
+      args: { APP_VERSION: "${APP_VERSION:-dev}" }
+    image: vinheria/catalogo-service:${APP_VERSION:-dev}
+    hostname: catalogo
+    domainname: vinheria.local
+    user: "10001:10001"
+    read_only: true
+    tmpfs: ["/tmp"]
+    environment:
+      APP_VERSION: ${APP_VERSION:-dev}
+      PORTA: "8443"
+      TLS_CERT_FILE: /run/pki/tls.crt
+      TLS_KEY_FILE: /run/pki/tls.key
+      TLS_CA_FILE: /run/pki/ca.crt
+      TLS_CLIENT_AUTH: required
+      JWT_PUBLIC_KEY_FILE: /run/pki/jwt-carrinho.pub
+      JWT_ISSUER: carrinho-service
+      JWT_AUDIENCE: catalogo-service
+    dns: [10.50.0.2]
+    dns_search: [vinheria.local]
+    depends_on:
+      pki-init: { condition: service_completed_successfully }
+    volumes:
+      - <<: *pki-volume
+        target: /run/pki
+        volume: { subpath: catalogo }
+    networks:
+      lan:
+        mac_address: "02:00:0a:32:00:65"   # amarrado a reserva 10.50.0.101 no Kea
+
+  catalogo-dhcp:
+    <<: *hardening
+    build: ./infra/dhcp-client
+    image: vinheria/dhcp-client:${APP_VERSION:-dev}
+    cap_add: [NET_ADMIN, NET_RAW]
+    network_mode: "service:catalogo"
+    environment:
+      DHCP_HOSTNAME: catalogo
+      DHCP_VENDOR_CLASS: vinheria-microsservico
+    depends_on:
+      catalogo: { condition: service_started }
+      dhcp: { condition: service_healthy }
+      dhcp-ddns: { condition: service_started }
+
+  # ---------------------------------------------------------------------------
+  # Microsservico 2: carrinho-service (carrinho de compras)
+  # ---------------------------------------------------------------------------
+  carrinho:
+    <<: *hardening
+    build:
+      context: ./services/carrinho-service
+      target: runtime
+      args: { APP_VERSION: "${APP_VERSION:-dev}" }
+    image: vinheria/carrinho-service:${APP_VERSION:-dev}
+    hostname: carrinho
+    domainname: vinheria.local
+    user: "10001:10001"
+    read_only: true
+    tmpfs: ["/tmp"]
+    environment:
+      APP_VERSION: ${APP_VERSION:-dev}
+      PORTA: "8443"
+      TLS_CERT_FILE: /run/pki/tls.crt
+      TLS_KEY_FILE: /run/pki/tls.key
+      TLS_CA_FILE: /run/pki/ca.crt
+      TLS_CLIENT_AUTH: required
+      CATALOGO_SRV: _catalogo._tcp.vinheria.local
+      CATALOGO_URL_PADRAO: https://catalogo.vinheria.local:8443
+      JWT_PRIVATE_KEY_FILE: /run/pki/jwt-privada.pem
+      JWT_ISSUER: carrinho-service
+      JWT_AUDIENCE: catalogo-service
+      OPERADOR_USUARIO: ${OPERADOR_USUARIO:-operador}
+      # Docker secret repassado pelo pki-init (o container e read-only)
+      OPERADOR_SENHA_FILE: /run/pki/operador.senha
+    dns: [10.50.0.2]
+    dns_search: [vinheria.local]
+    depends_on:
+      pki-init: { condition: service_completed_successfully }
+    volumes:
+      - <<: *pki-volume
+        target: /run/pki
+        volume: { subpath: carrinho }
+    networks:
+      lan:
+        mac_address: "02:00:0a:32:00:66"   # amarrado a reserva 10.50.0.102 no Kea
+
+  carrinho-dhcp:
+    <<: *hardening
+    image: vinheria/dhcp-client:${APP_VERSION:-dev}
+    cap_add: [NET_ADMIN, NET_RAW]
+    network_mode: "service:carrinho"
+    environment:
+      DHCP_HOSTNAME: carrinho
+      DHCP_VENDOR_CLASS: vinheria-microsservico
+    depends_on:
+      carrinho: { condition: service_started }
+      dhcp: { condition: service_healthy }
+      dhcp-ddns: { condition: service_started }
+
+  # ---------------------------------------------------------------------------
+  # Gateway / reverse proxy TLS: unico ponto exposto ao host
+  # ---------------------------------------------------------------------------
+  gateway:
+    <<: *hardening
+    build: ./infra/gateway
+    image: vinheria/gateway:${APP_VERSION:-dev}
+    hostname: gateway
+    cap_add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE]
+    read_only: true
+    tmpfs: ["/var/cache/nginx", "/var/run", "/tmp", "/etc/nginx/conf.d"]
+    environment:
+      HTTPS_PORTA_PUBLICA: "${GATEWAY_HTTPS_PORTA:-8443}"
+    depends_on:
+      dns: { condition: service_healthy }
+    volumes:
+      - <<: *pki-volume
+        target: /run/pki
+        volume: { subpath: gateway }
+    ports:
+      - "${GATEWAY_HTTPS_PORTA:-8443}:443"
+      - "${GATEWAY_HTTP_PORTA:-8880}:80"     # apenas redireciona para HTTPS
+    networks:
+      lan: { ipv4_address: 10.50.0.10 }
+      edge: {}
+
+  # ---------------------------------------------------------------------------
+  # Estacao de trabalho da loja (PDV): cliente DHCP "puro" + ferramentas
+  # ---------------------------------------------------------------------------
+  estacao-pdv:
+    image: vinheria/dhcp-client:${APP_VERSION:-dev}
+    hostname: pdv-01
+    restart: unless-stopped
+    logging: *logging
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: [NET_ADMIN, NET_RAW]
+    environment:
+      DHCP_HOSTNAME: pdv-01
+      DHCP_VENDOR_CLASS: vinheria-pdv
+      DHCP_WRITE_RESOLV: "true"
+    depends_on:
+      dhcp: { condition: service_healthy }
+      dhcp-ddns: { condition: service_started }
+    volumes:
+      - <<: *pki-volume
+        target: /run/pki
+        volume: { subpath: pdv }
+    networks:
+      lan: {}
+
+  # ===========================================================================
+  # PERFIL "demo-inseguro" (Parte 3): gateway HTTP sem TLS + capturas de rede
+  #   docker compose --profile demo-inseguro up -d
+  #   bash scripts/demo-wireshark.sh
+  # ===========================================================================
+  gateway-inseguro:
+    <<: *hardening
+    image: vinheria/gateway:${APP_VERSION:-dev}
+    profiles: [demo-inseguro]
+    hostname: inseguro
+    cap_add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE]
+    read_only: true
+    tmpfs: ["/var/cache/nginx", "/var/run", "/tmp", "/etc/nginx/conf.d"]
+    environment:
+      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates-inseguro
+    depends_on:
+      dns: { condition: service_healthy }
+    volumes:
+      - <<: *pki-volume
+        target: /run/pki
+        volume: { subpath: gateway }
+    ports:
+      - "${GATEWAY_INSEGURO_PORTA:-8881}:80"
+    networks:
+      lan: { ipv4_address: 10.50.0.11 }
+      edge: {}
+
+  captura-http:
+    build: ./infra/captura
+    image: vinheria/captura:${APP_VERSION:-dev}
+    profiles: [demo-inseguro]
+    network_mode: "service:gateway-inseguro"
+    cap_drop: ["ALL"]
+    cap_add: [NET_RAW, NET_ADMIN, SETUID, SETGID]
+    command: ["-Z", "root", "-i", "any", "-U", "-s", "0", "-w", "/capturas/01-sem-tls-http.pcap", "tcp port 80 or tcp port 8443"]
+    volumes:
+      - ./capturas:/capturas
+
+  captura-https:
+    image: vinheria/captura:${APP_VERSION:-dev}
+    profiles: [demo-inseguro]
+    network_mode: "service:gateway"
+    cap_drop: ["ALL"]
+    cap_add: [NET_RAW, NET_ADMIN, SETUID, SETGID]
+    command: ["-Z", "root", "-i", "any", "-U", "-s", "0", "-w", "/capturas/02-com-tls-https.pcap", "tcp port 443 or tcp port 8443"]
+    volumes:
+      - ./capturas:/capturas
+
+networks:
+  lan:
+    name: vinheria-lan
+    driver: bridge
+    # ATENCAO: NAO usar "internal: true" aqui. Redes internal do Docker descartam
+    # pacotes cuja origem/destino esteja fora da sub-rede - e o DHCPDISCOVER sai
+    # de 0.0.0.0 para 255.255.255.255, entao o DHCP simplesmente nao funcionaria.
+    # O isolamento da internet e obtido desligando o NAT (masquerade) da bridge.
+    driver_opts:
+      com.docker.network.bridge.name: br-vinheria
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.50.0.0/24
+          gateway: 10.50.0.1
+          ip_range: 10.50.0.16/28   # faixa de bootstrap do Docker (fora do escopo DHCP)
+  edge:
+    name: vinheria-edge
+    driver: bridge
+
+volumes:
+  pki:
+    name: vinheria-pki
+  dhcp-leases:
+    name: vinheria-dhcp-leases
+  dns-zonas:
+    name: vinheria-dns-zonas
+
+secrets:
+  operador_senha:
+    environment: OPERADOR_SENHA

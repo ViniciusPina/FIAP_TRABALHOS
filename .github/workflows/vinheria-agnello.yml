@@ -1,0 +1,150 @@
+# =============================================================================
+# Vinheria Agnello - CI/CD no GitHub Actions
+# Espelha o Jenkinsfile: o mesmo pipeline roda a cada push, sem servidor proprio.
+#
+#  testes (matriz) ─┐
+#  lint-infra ──────┼─> ambiente-e2e (DHCP+DNS+servicos, smoke, wireshark, evidencias) ─┐
+#  devsecops ───────┴────────────────────────────────────────────────────────────────────┴─> publicar
+# =============================================================================
+name: Vinheria Agnello - CI/CD
+
+on:
+  push:
+    paths:
+      - "projetos/vinheria_agnello/**"
+      - ".github/workflows/vinheria-agnello.yml"
+  pull_request:
+    paths:
+      - "projetos/vinheria_agnello/**"
+      - ".github/workflows/vinheria-agnello.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vinheria-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_VERSION: 1.0.${{ github.run_number }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: projetos/vinheria_agnello
+
+jobs:
+  testes:
+    name: Testes unitarios (${{ matrix.servico }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        servico: [catalogo-service, carrinho-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Lint (ruff) + testes (pytest) dentro do build multi-stage
+        run: |
+          docker buildx build --target relatorios \
+            --output type=local,dest=relatorios/${{ matrix.servico }} \
+            services/${{ matrix.servico }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-${{ matrix.servico }}
+          path: projetos/vinheria_agnello/relatorios/
+
+  lint-infra:
+    name: Lint de infraestrutura (compose, Dockerfiles, shell)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: bash scripts/validar-configs.sh
+
+  devsecops:
+    name: DevSecOps (gitleaks + trivy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - name: Construir imagens para varredura
+        run: docker compose build catalogo carrinho gateway
+      - run: bash scripts/scan-seguranca.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorios-seguranca
+          path: projetos/vinheria_agnello/relatorios/seguranca/
+
+  ambiente-e2e:
+    name: Ambiente completo (DHCP + DNS + microsservicos)
+    needs: [testes, lint-infra]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - name: Build das imagens (configs de BIND/Kea/Nginx validadas no build)
+        run: docker compose build
+      - name: Subir o ambiente
+        run: |
+          docker compose up -d
+          bash scripts/aguardar-saude.sh 240
+          docker compose ps
+      - name: Smoke test (rede, DHCP, DNS, comunicacao, seguranca)
+        run: bash scripts/smoke-test.sh | tee relatorios-smoke.txt
+      - name: Demonstracao HTTP x HTTPS (capturas .pcap)
+        run: bash scripts/demo-wireshark.sh
+      - name: Coletar evidencias para o relatorio
+        run: bash scripts/coletar-evidencias.sh
+      - name: Resumo no GitHub
+        if: always()
+        run: |
+          {
+            echo "## Vinheria Agnello - smoke test"
+            echo '```'
+            sed 's/\x1b\[[0-9;]*m//g' relatorios-smoke.txt 2>/dev/null | tail -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Logs dos containers
+        if: always()
+        run: |
+          mkdir -p relatorios
+          docker compose --profile demo-inseguro logs --no-color > relatorios/compose.log 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidencias-e2e
+          path: |
+            projetos/vinheria_agnello/evidencias/
+            projetos/vinheria_agnello/capturas/
+            projetos/vinheria_agnello/relatorios/
+      - name: Derrubar ambiente
+        if: always()
+        run: docker compose --profile demo-inseguro down -v --remove-orphans
+
+  publicar:
+    name: Empacotar e publicar (pasta de publicacao / IIS simulado)
+    needs: [ambiente-e2e, devsecops]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose build
+      - name: Build simples
+        run: echo "Deploy da Vinheria - versao $APP_VERSION (commit ${GITHUB_SHA::7})"
+      - run: bash scripts/empacotar.sh "$APP_VERSION" "${GITHUB_SHA::7}"
+      - run: bash scripts/publicar.sh "dist/vinheria-agnello-$APP_VERSION.tar.gz" publicacao
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ env.APP_VERSION }}
+          path: |
+            projetos/vinheria_agnello/dist/
+            projetos/vinheria_agnello/publicacao/

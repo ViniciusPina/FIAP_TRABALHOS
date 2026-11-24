@@ -1,0 +1,58 @@
+"""Carga inicial do catalogo - mesmos vinhos do catalogo.jsp da sprint anterior."""
+
+PRODUTOS_INICIAIS: list[dict] = [
+    {
+        "id": 1,
+        "nome": "Espumante Prosecco",
+        "tipo": "espumante",
+        "preco": 120.0,
+        "estoque": 30,
+        "imagem": "assets/proseco.svg",
+        "descricao": "Espumante fresco e elegante para celebracoes e experiencias premium.",
+    },
+    {
+        "id": 2,
+        "nome": "Vinho Tinto Cabernet",
+        "tipo": "tinto",
+        "preco": 89.0,
+        "estoque": 48,
+        "imagem": "assets/cabernet.svg",
+        "descricao": "Rotulo intenso, com perfil encorpado e excelente harmonizacao com carnes.",
+    },
+    {
+        "id": 3,
+        "nome": "Vinho Branco Chardonnay",
+        "tipo": "branco",
+        "preco": 75.0,
+        "estoque": 36,
+        "imagem": "assets/chardonay.svg",
+        "descricao": "Branco leve e sofisticado para refeicoes leves e momentos descontraidos.",
+    },
+    {
+        "id": 4,
+        "nome": "Malbec",
+        "tipo": "tinto",
+        "preco": 95.0,
+        "estoque": 24,
+        "imagem": "assets/malbec.svg",
+        "descricao": "Estrutura equilibrada e final persistente para um consumo mais marcante.",
+    },
+    {
+        "id": 5,
+        "nome": "Merlot",
+        "tipo": "tinto",
+        "preco": 85.0,
+        "estoque": 40,
+        "imagem": "assets/merlot.svg",
+        "descricao": "Tinto versatil, macio e convidativo para diferentes ocasioes.",
+    },
+    {
+        "id": 6,
+        "nome": "Espumante Brut",
+        "tipo": "espumante",
+        "preco": 120.0,
+        "estoque": 18,
+        "imagem": "assets/brut.svg",
+        "descricao": "Opcao refinada para brindes e celebracoes especiais.",
+    },
+]
