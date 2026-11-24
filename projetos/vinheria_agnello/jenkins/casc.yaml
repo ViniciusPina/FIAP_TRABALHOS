@@ -14,11 +14,7 @@ jenkins:
   authorizationStrategy:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false
-  crumbIssuer:
-    standard:
-      excludeClientIPFromCrumb: false
-  remotingSecurity:
-    enabled: true
+  # Protecao CSRF (crumb) fica habilitada por padrao nas versoes atuais do Jenkins
 
 security:
   globalJobDslSecurityConfiguration:
