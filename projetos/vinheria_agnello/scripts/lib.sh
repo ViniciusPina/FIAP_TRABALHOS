@@ -16,8 +16,13 @@ if [ ! -f .env ]; then
     cp .env.example .env
     echo "[info] .env criado a partir de .env.example"
 fi
-# shellcheck disable=SC1091
-set -a; . ./.env; set +a
+# Carrega o .env com a MESMA precedencia do Docker Compose: variavel ja
+# definida no ambiente (CI/Jenkins, ex.: APP_VERSION=1.0.42) vence o .env.
+while IFS='=' read -r chave valor || [ -n "$chave" ]; do
+    chave=${chave%$'\r'}; valor=${valor%$'\r'}
+    case "$chave" in ''|\#*) continue ;; esac
+    if [ -z "${!chave+definida}" ]; then export "$chave=$valor"; fi
+done < .env
 
 if [ -t 1 ]; then
     VERDE=$'\e[32m'; VERMELHO=$'\e[31m'; AMARELO=$'\e[33m'; AZUL=$'\e[36m'; NEGRITO=$'\e[1m'; RESET=$'\e[0m'
