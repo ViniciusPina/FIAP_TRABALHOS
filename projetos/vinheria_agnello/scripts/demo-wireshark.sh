@@ -18,6 +18,9 @@ PERFIL=(--profile demo-inseguro)
 CRED="${OPERADOR_USUARIO}:${OPERADOR_SENHA}"
 mkdir -p capturas
 rm -f capturas/*.pcap
+# O tcpdump roda como root, mas SEM DAC_OVERRIDE (cap_drop: ALL): no Linux ele
+# nao consegue gravar numa pasta de outro usuario. Pasta de laboratorio -> 0777.
+chmod 0777 capturas
 
 titulo "Subindo o gateway INSEGURO (HTTP) e os sniffers"
 "${COMPOSE[@]}" "${PERFIL[@]}" up -d --no-deps gateway-inseguro >/dev/null
@@ -38,6 +41,14 @@ fluxo "https://api.vinheria.local" "--cacert /run/pki/ca.crt"
 
 sleep 2
 "${COMPOSE[@]}" "${PERFIL[@]}" stop captura-http captura-https >/dev/null
+
+for pcap in 01-sem-tls-http.pcap 02-com-tls-https.pcap; do
+    if [ ! -s "capturas/$pcap" ]; then
+        erro "captura capturas/$pcap nao foi gerada - logs dos sniffers:"
+        "${COMPOSE[@]}" "${PERFIL[@]}" logs --no-color captura-http captura-https >&2
+        exit 1
+    fi
+done
 
 ler() { # ler <pcap>  -> conteudo ASCII dos pacotes (tcpdump -A)
     # reaproveita o servico do compose (o bind mount ./capturas funciona igual no Windows)
